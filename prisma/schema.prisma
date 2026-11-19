@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts            Account[]
+  sessions            Session[]
+  cloudInstances      CloudInstance[]
+  snapshots           Snapshot[]
+  connectionSessions  ConnectionSession[]
+  auditLogs           AuditLog[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum CloudInstanceStatus {
+  CREATED
+  QUEUED
+  PROVISIONING
+  STARTING
+  RUNNING
+  STOPPING
+  STOPPED
+  RESTORING
+  ERROR
+  DELETED
+}
+
+model InfrastructureProvider {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  type        String
+  config      Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cloudInstances CloudInstance[]
+}
+
+model CloudInstance {
+  id                  String              @id @default(cuid())
+  userId              String
+  providerId          String?
+  name                String
+  os                  String
+  status              CloudInstanceStatus @default(CREATED)
+  providerInstanceId  String?
+  host                String?
+  port                Int?
+  username            String?
+  // RDP/remote password must never be stored in plaintext. Store only an encrypted blob
+  // managed by a secrets layer, or omit until that layer exists.
+  encryptedSecretRef  String?
+  lastError           String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider            InfrastructureProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  snapshots           Snapshot[]
+  connectionSessions  ConnectionSession[]
+  auditLogs           AuditLog[]
+}
+
+model Snapshot {
+  id             String   @id @default(cuid())
+  userId         String
+  cloudInstanceId String
+  name           String
+  status         String   @default("pending")
+  sizeBytes      BigInt?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cloudInstance CloudInstance @relation(fields: [cloudInstanceId], references: [id], onDelete: Cascade)
+}
+
+model ConnectionSession {
+  id             String   @id @default(cuid())
+  userId         String
+  cloudInstanceId String
+  startedAt      DateTime @default(now())
+  endedAt        DateTime?
+  clientInfo     String?
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cloudInstance CloudInstance @relation(fields: [cloudInstanceId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  userId         String?
+  cloudInstanceId String?
+  action         String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  cloudInstance CloudInstance? @relation(fields: [cloudInstanceId], references: [id], onDelete: SetNull)
+}
